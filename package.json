@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@azure/identity": "^4.4.1",
+    "@azure/keyvault-keys": "^4.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.4.1",
+    "esbuild-runner": "^2.2.2"
+  }
+}
