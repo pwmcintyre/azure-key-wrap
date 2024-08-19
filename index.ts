@@ -1,5 +1,5 @@
 import { DefaultAzureCredential } from "@azure/identity"
-import { CryptographyClient, KeyClient } from "@azure/keyvault-keys"
+import { CryptographyClient, KeyClient, KeyWrapAlgorithm } from "@azure/keyvault-keys"
 import crypto from "crypto"
 
 const credential = new DefaultAzureCredential()
@@ -9,6 +9,7 @@ type Message = string
 type EncryptedMessage = {
     value: string
     encrypted_data_key: string
+    encrypted_data_key_alg: string
     key_url: string
 }
 
@@ -19,6 +20,7 @@ const wrapping_algo = "RSA1_5"
 async function main() {
 
     const plaintext = "Hello, World!"
+    // const plaintext = crypto.randomBytes(100 * 1024).toString('hex') // if you want a large message
     const encrypted = await encrypt(plaintext)
     let decrypted = await decrypt(encrypted)
 
@@ -38,9 +40,10 @@ async function main() {
     // {
     //     plaintext: 'Hello, World!',
     //     encrypted: {
-    //       value: 'SE/bj2sfBH2Z34tmBOIIyQ==',
-    //       encrypted_data_key: 'SGd/W+fxkyvIdAmA0iC6ctC5Lx6abTZWkI0UDEIDfKNfjH9U3CMDXkdQPipLfylbgrrXoyYrV8GRlhexQ3H4dwqtyoJZcNDpc7r6nmq9H/omzI2PWuwwd5G8RVkFfM/EgkwJa9YVSsi1skzkqrQtWck/jfwfUNNdmNF0wCgo3FwBYalFhyP3rW5wN74XU0nRCasEoLmkBV3H1tZBTz5W2aDy2zQP9BoqddbaLH+mwmeKqfyfUFIaUuDF77CG2SKj8q66+u9iqB96EvX1O0TXSAHu71fG8oH6PTBeIFusIrZUiny98yCwOoJNT03nyTO7dquuJzMoaTPSOGCjgiFk+A==',
-    //       key_url: 'https://pwmcintyre-example.vault.azure.net/keys/key-1/'
+    //       value: '/56blYlXG91vJ4YMM0gCOA==',
+    //       encrypted_data_key: 'jVreRh9UPOPjIGvHq80hvXkU+WTfdnr/tE/4no8ZbmMzphZqUqYpyjqz7BM/azUadDSfZ4bCesRjiaOgaD3D0ajIYlt+vRUCszgpoHmCVuGonNw4pd99Xke1ACE8V06t/cDH8K2fdP7ODbvfaRhWwfrnp7SqSgXCsg91t9bXEjjbKNXoXz05zy12EvZQEuYHYDCaXnCkMn2uqEfz/ItwrZJERM9yBE/K0Pr9r7xqUxg0P7a0FFWTQIwESjrY247mR+yyp+eFawS3AyhD+BddNdD10mPuCK01IWV6yjqBOJBf1j8+CVoqCHVMVL//7hkx4YsmvtVMWOaCyCi0rc82Qw==',
+    //       encrypted_data_key_alg: 'RSA1_5',
+    //       key_url: 'https://pwmcintyre-example.vault.azure.net/keys/key-1/155eb9a29049494d81eafb450f58ec43'
     //     },
     //     decrypted: 'Hello, World!'
     // }
@@ -60,7 +63,6 @@ async function encrypt(message: Message): Promise<EncryptedMessage> {
     const keyVaultUrl = "https://pwmcintyre-example.vault.azure.net"
     const keyName = "key-1"
     const keyVersion = undefined // latest version
-    const keyURL = new URL(`/keys/${keyName}/${keyVersion ?? ''}`, keyVaultUrl)
 
     // create a Azure Key Client
     const azureKeyClient = new KeyClient(keyVaultUrl, credential)
@@ -86,7 +88,8 @@ async function encrypt(message: Message): Promise<EncryptedMessage> {
     return {
         value: encrypted,
         encrypted_data_key: wrapped_DEK.toString("base64"),
-        key_url: keyURL.toString(),
+        encrypted_data_key_alg: wrapResult.algorithm,
+        key_url: wrapResult.keyID!,
     }
 }
 
@@ -97,6 +100,7 @@ async function decrypt(encrypted: EncryptedMessage): Promise<Message> {
     const keyVaultUrl = u.origin
     const keyName = u.pathname.split("/")[2]
     const keyVersion = u.pathname.split("/")[3] // unsafe, please validate
+    const wrap_alg = encrypted.encrypted_data_key_alg as KeyWrapAlgorithm
 
     // create a Azure Key Client
     const azureKeyClient = new KeyClient(keyVaultUrl, credential)
@@ -109,7 +113,7 @@ async function decrypt(encrypted: EncryptedMessage): Promise<Message> {
 
     // unwrap the encrypted DEK
     const wrapped_DEK = Buffer.from(encrypted.encrypted_data_key, "base64")
-    const unwrapResult = await cryptographyClient.unwrapKey(wrapping_algo, wrapped_DEK)
+    const unwrapResult = await cryptographyClient.unwrapKey(wrap_alg, wrapped_DEK)
     const unwrapped_DEK = Buffer.from(unwrapResult.result)
 
     // decrypt the encrypted blob
